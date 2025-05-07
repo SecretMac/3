@@ -1,11 +1,5 @@
 [[redirects]]
   from = "/*"
   to = "/404.html"
-  status = 200
-  force = true
-
-[[headers]]
-  for = "/*"
-  [headers.values]
-    X-Content-Type-Options = "nosniff"
-    X-Frame-Options = "DENY"
+  status = 404
+  force = true  # Overrides existing files :cite[4]
