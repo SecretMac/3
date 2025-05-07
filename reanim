@@ -2752,7 +2752,7 @@ local function createDraggableGui(getGhostEnabled, toggleGhost)
     local customAnimationsGui = createCustomAnimationsGui()
 
     local lastToggleTime = 0
-    local COOLDOWN_DURATION = 5
+    local COOLDOWN_DURATION = 3
     local fadeTweenInfo = TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut)
 
     local function createToggleSwitch(name, position, enabled, callback)
