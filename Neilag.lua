@@ -10,6 +10,26 @@ local localPlayer = Players.LocalPlayer
 local blob2 = "\u{001E}" -- invisible character
 local blob = "\u{000D}" -- newline
 
+local connections = {}
+local coroutines = {}
+
+-- Helper to store connections
+local function addConnection(connection)
+    table.insert(connections, connection)
+end
+
+-- Helper to store coroutines
+local function addCoroutine(co)
+    table.insert(coroutines, co)
+end
+
+-- Wrap connections to track them
+local function wrapConnection(event, func)
+    local connection = event:Connect(func)
+    addConnection(connection)
+    return connection
+end
+
 local function chatMessage(str)
     str = tostring(str)
     if TextChatService.ChatVersion == Enum.ChatVersion.TextChatService then
@@ -243,7 +263,7 @@ local function update(input)
     )
 end
 
-TitleBar.InputBegan:Connect(function(input)
+addConnection(TitleBar.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
         dragging = true
         dragStart = input.Position
@@ -254,25 +274,25 @@ TitleBar.InputBegan:Connect(function(input)
             end
         end)
     end
-end)
+end))
 
-TitleBar.InputChanged:Connect(function(input)
+addConnection(TitleBar.InputChanged:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
         dragInput = input
     end
-end)
+end))
 
-UserInputService.InputChanged:Connect(function(input)
+addConnection(UserInputService.InputChanged:Connect(function(input)
     if input == dragInput and dragging then
         update(input)
     end
-end)
+end))
 
 local minimized = false
 local expandedSize = UDim2.new(0, 400, 0, 240)
 local minimizedSize = UDim2.new(0, 400, 0, 40)
 
-MinimizeButton.MouseButton1Click:Connect(function()
+addConnection(MinimizeButton.MouseButton1Click:Connect(function()
     minimized = not minimized
     if minimized then
         TabBar.Visible = false
@@ -300,11 +320,84 @@ MinimizeButton.MouseButton1Click:Connect(function()
             TweenService:Create(CloseButton, fadeInfo, {TextTransparency = 0, BackgroundTransparency = 0}):Play()
         end)
     end
-end)
+end))
 
-CloseButton.MouseButton1Click:Connect(function()
-    ScreenGui:Destroy()
-end)
+local function cleanup()
+    -- Destroy all GUIs
+    if ScreenGui then ScreenGui:Destroy() end
+    if SpectateGui then SpectateGui:Destroy() end
+    if screenGui then screenGui:Destroy() end
+
+    -- Disconnect all connections
+    for _, connection in ipairs(connections) do
+        if connection then connection:Disconnect() end
+    end
+    connections = {}
+
+    -- Stop all coroutines
+    for _, co in ipairs(coroutines) do
+        if coroutine.status(co) ~= "dead" then
+            pcall(coroutine.close, co)
+        end
+    end
+    coroutines = {}
+
+    -- Stop specific connections
+    if ragdollConnection then ragdollConnection:Disconnect() end
+    if knifeEquipConnection then knifeEquipConnection:Disconnect() end
+    if annoyConnection then annoyConnection:Disconnect() end
+
+    -- Reset character state only if lag or annoy was active
+    local character = localPlayer.Character
+    if character and (lagToggled or lagEnabled or annoyToggled) then
+        local humanoid = character:FindFirstChildOfClass("Humanoid")
+        local rootPart = character:FindFirstChild("HumanoidRootPart")
+        if humanoid then
+            humanoid.PlatformStand = false
+            humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+        end
+        if rootPart then
+            if lagToggled or lagEnabled then
+                rootPart.CFrame = CFrame.new(0, 50, 0) -- Only teleport if lag was active
+            end
+            rootPart.Anchored = false
+        end
+        for _, part in pairs(character:GetChildren()) do
+            if part:IsA("BasePart") then
+                part.Anchored = false
+                setVelocityToZero(part)
+            end
+        end
+        if unragdollEvent then unragdollEvent:FireServer() end
+        if ModifyUserEvent then ModifyUserEvent:FireServer(localPlayer.Name) end
+        if ToggleDisallowEvent then ToggleDisallowEvent:FireServer() end
+    end
+
+    -- Reset camera
+    if cam then
+        cam.CameraSubject = localPlayer.Character and localPlayer.Character:FindFirstChild("Humanoid") or nil
+    end
+
+    -- Reset states
+    lagToggled = false
+    lagEnabled = false
+    annoyToggled = false
+    spectating = false
+    antiLagToggled = false
+    notificationsEnabled = false
+
+    -- Clear tables
+    activeNotifications = {}
+    allPlayers = {}
+    originalPositions = {}
+    nearestTargetPlayers = {}
+    farthestTargetPlayers = {}
+    randomTargetPlayers = {}
+end
+
+addConnection(CloseButton.MouseButton1Click:Connect(function()
+    cleanup()
+end))
 
 local function setTabActive(tabButton, frame)
     MainFrameContent.Visible = frame == MainFrameContent
@@ -318,34 +411,35 @@ local function setTabActive(tabButton, frame)
     SettingsTabButton.TextColor3 = frame == SettingsFrame and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(180, 180, 180)
 end
 
-MainTabButton.MouseButton1Click:Connect(function()
+addConnection(MainTabButton.MouseButton1Click:Connect(function()
     setTabActive(MainTabButton, MainFrameContent)
-end)
+end))
 
-ChatTabButton.MouseButton1Click:Connect(function()
+addConnection(ChatTabButton.MouseButton1Click:Connect(function()
     setTabActive(ChatTabButton, ChatFrame)
-end)
+end))
 
-SettingsTabButton.MouseButton1Click:Connect(function()
+addConnection(SettingsTabButton.MouseButton1Click:Connect(function()
     setTabActive(SettingsTabButton, SettingsFrame)
-end)
+end))
 
 for _, btn in pairs({MainTabButton, ChatTabButton, SettingsTabButton}) do
-    btn.MouseEnter:Connect(function()
+    addConnection(btn.MouseEnter:Connect(function()
         if btn.BackgroundColor3 ~= Color3.fromRGB(45, 45, 50) then
             btn.BackgroundColor3 = Color3.fromRGB(40, 40, 45)
         end
-    end)
-    btn.MouseLeave:Connect(function()
+    end))
+    addConnection(btn.MouseLeave:Connect(function()
         if btn.BackgroundColor3 ~= Color3.fromRGB(45, 45, 50) then
             btn.BackgroundColor3 = Color3.fromRGB(35, 35, 40)
         end
-    end)
+    end))
 end
 
-ChatClearButton.MouseButton1Click:Connect(function()
+addConnection(ChatClearButton.MouseButton1Click:Connect(function()
     chatMessage(blob2 .. string.rep(blob, 100) .. ".")
-end)
+end))
+
 -----------------------------------------------------------
 -- Spectate Setup
 local SpectateGui = Instance.new("ScreenGui")
@@ -457,8 +551,8 @@ local function updatePlayers(leavingPlayer)
 end
 updatePlayers()
 
-Players.PlayerAdded:Connect(function() updatePlayers() end)
-Players.PlayerRemoving:Connect(function(player) updatePlayers(player) end)
+wrapConnection(Players.PlayerAdded, function() updatePlayers() end)
+wrapConnection(Players.PlayerRemoving, function(player) updatePlayers(player) end)
 
 local function onPress(skip)
     if #allPlayers == 0 then return end
@@ -473,15 +567,15 @@ local function onPress(skip)
     currentSpectateTarget = allPlayers[PlayerIndex.Value]
 end
 
-LeftButton.MouseButton1Click:Connect(function() onPress(-1) end)
-RightButton.MouseButton1Click:Connect(function() onPress(1) end)
-LeftButton.TouchTap:Connect(function() onPress(-1) end)
-RightButton.TouchTap:Connect(function() onPress(1) end)
+addConnection(LeftButton.MouseButton1Click:Connect(function() onPress(-1) end))
+addConnection(RightButton.MouseButton1Click:Connect(function() onPress(1) end))
+addConnection(LeftButton.TouchTap:Connect(function() onPress(-1) end))
+addConnection(RightButton.TouchTap:Connect(function() onPress(1) end))
 
 local cam = workspace.CurrentCamera
 local spectating = false
 
-RunService.RenderStepped:Connect(function()
+addConnection(RunService.RenderStepped:Connect(function()
     if spectating and #allPlayers > 0 then
         local targetPlayer = allPlayers[PlayerIndex.Value]
         if targetPlayer and targetPlayer.Character then
@@ -495,7 +589,7 @@ RunService.RenderStepped:Connect(function()
             PlayerDisplay.Text = localPlayer.Name
         end
     end
-end)
+end))
 
 local function updateStrokeThickness()
     local screenSize = workspace.CurrentCamera.ViewportSize
@@ -504,7 +598,7 @@ local function updateStrokeThickness()
     UIStroke2.Thickness = 5 * scaleFactor * 1.25
     UIStroke3.Thickness = 5 * scaleFactor * 1.25
 end
-RunService.RenderStepped:Connect(updateStrokeThickness)
+addConnection(RunService.RenderStepped:Connect(updateStrokeThickness))
 
 -----------------------------------------------------------
 -- Lag Server Functionality
@@ -607,13 +701,11 @@ local function toggleRagdoll()
             ToggleDisallowEvent:FireServer()
         end
 
-        -- Teleport to knife proximity prompt and obtain knife
         teleportToKnife()
         wait(0.5)
         activateProximityPrompt()
         wait(0.5)
 
-        -- Teleport to hidden spot after obtaining knife
         if rootPart then
             rootPart.CFrame = CFrame.new(4224, 26, 62)
             wait(0.5)
@@ -652,16 +744,17 @@ local function toggleRagdoll()
                 LeftFoot = oldCFrame * CFrame.new(-offset/2, -offset*2, 0)
             }
             for partName, cf in pairs(parts) do
-                local part = character:FindFirstChild(partValue)
+                local part = character:FindFirstChild(partName)
                 if part then
                     part.CFrame = cf
                     setVelocityToZero(part)
                 end
             end
         end)
+        addConnection(ragdollConnection)
         
         if lagToggled and isKnifeInInventory() then
-            spawn(loopKnifeToggle)
+            addCoroutine(spawn(loopKnifeToggle))
         end
     else
         unragdollEvent:FireServer()
@@ -688,7 +781,7 @@ local function toggleRagdoll()
     end
 end
 
-LagServerButton.MouseButton1Click:Connect(function()
+addConnection(LagServerButton.MouseButton1Click:Connect(function()
     if lagButtonCooldown or annoyToggled then return end
 
     lagToggled = not lagToggled
@@ -700,7 +793,7 @@ LagServerButton.MouseButton1Click:Connect(function()
 
     lagButtonCooldown = true
     LagServerButton.AutoButtonColor = false
-    spawn(function()
+    addCoroutine(spawn(function()
         local cooldownRemaining = lagCooldownTime
         while cooldownRemaining > 0 do
             LagServerButton.Text = "Lag Server: " .. (lagToggled and "ON" or "OFF") .. " (" .. cooldownRemaining .. "s)"
@@ -710,8 +803,8 @@ LagServerButton.MouseButton1Click:Connect(function()
         lagButtonCooldown = false
         LagServerButton.Text = "Lag Server: " .. (lagToggled and "ON" or "OFF")
         LagServerButton.AutoButtonColor = true
-    end)
-end)
+    end))
+end))
 
 -----------------------------------------------------------
 -- Annoy Server Functionality
@@ -929,7 +1022,7 @@ local keyframes = {
             }
         }
     }
-} -- Added closing brace for keyframes table
+}
 
 local bodyParts = {}
 for partName, _ in pairs(keyframes[1].config) do
@@ -1234,7 +1327,7 @@ local function SafeDeactivateAnnoy()
     initialHumanoidRootPartCFrame = nil
 end
 
-AnnoyServerButton.MouseButton1Click:Connect(function()
+addConnection(AnnoyServerButton.MouseButton1Click:Connect(function()
     if lagToggled then return end
 
     annoyToggled = not annoyToggled
@@ -1254,6 +1347,7 @@ AnnoyServerButton.MouseButton1Click:Connect(function()
             annoyConnection:Disconnect()
         end
         annoyConnection = RunService.Heartbeat:Connect(UpdateBody)
+        addConnection(annoyConnection)
         
         ReplicatedStorage.RagdollEvent:FireServer()
     else
@@ -1264,9 +1358,9 @@ AnnoyServerButton.MouseButton1Click:Connect(function()
         ModifyUserEvent:FireServer(localPlayer.Name)
         wait(0.5)
     end
-end)
+end))
 
-Players.LocalPlayer.CharacterAdded:Connect(function()
+wrapConnection(Players.LocalPlayer.CharacterAdded, function()
     if annoyToggled then
         annoyToggled = false
         if annoyConnection then
@@ -1323,8 +1417,7 @@ local function continuouslyCheckItems()
         wait(1)
     end
 end
-
-spawn(continuouslyCheckItems)
+addCoroutine(spawn(continuouslyCheckItems))
 
 -----------------------------------------------------------
 -- Live Notification System (Unlimited with Fade-Out)
@@ -1418,29 +1511,24 @@ end
 local function showNotification(leavingPlayer)
     if not notificationsEnabled then return end
     
-    -- Create new notification
     local notification, profilePicture, notificationText, notificationSound = createNotification()
     
-    -- Set notification content
     notificationText.Text = leavingPlayer.Name .. " has left the server."
     local success, content = pcall(function()
         return Players:GetUserThumbnailAsync(leavingPlayer.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size420x420)
     end)
     profilePicture.Image = success and content or "rbxassetid://0"
 
-    -- Play sound if enabled
     if notificationsEnabled then
         pcall(function()
             notificationSound:Play()
         end)
     end
 
-    -- Position off-screen to the right
     local startX = 1
     local startOffsetX = -notificationWidth - 10
     local startY = initialYOffset
     
-    -- Add to active notifications table
     local notifData = {
         notification = notification,
         creationTime = os.clock(),
@@ -1449,7 +1537,6 @@ local function showNotification(leavingPlayer)
     }
     table.insert(activeNotifications, 1, notifData)
     
-    -- Make visible and slide in from right
     notification.Position = UDim2.new(startX, startOffsetX + notificationWidth + 20, 1, startY)
     notification.Visible = true
     
@@ -1459,27 +1546,21 @@ local function showNotification(leavingPlayer)
     })
     showTween:Play()
     
-    -- Update positions of all notifications
     updateNotificationPositions()
     
-    -- Start removal timer
-    task.spawn(function()
+    addCoroutine(task.spawn(function()
         local startTime = os.clock()
         
-        -- Wait for display duration
         while os.clock() - startTime < displayDuration do
             task.wait()
         end
         
-        -- Only remove if still in active notifications
         if table.find(activeNotifications, notifData) then
-            -- Fade out and slide right animation
             local fadeOutTween = TweenService:Create(notification, TweenInfo.new(fadeDuration, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
                 BackgroundTransparency = 1,
                 Position = UDim2.new(1, startOffsetX + notificationWidth + 20, 1, notification.Position.Y.Offset)
             })
             
-            -- Fade out text and picture too
             if profilePicture then
                 TweenService:Create(profilePicture, TweenInfo.new(fadeDuration), {ImageTransparency = 1}):Play()
             end
@@ -1490,21 +1571,20 @@ local function showNotification(leavingPlayer)
             fadeOutTween:Play()
             fadeOutTween.Completed:Wait()
             
-            -- Clean up
             notification:Destroy()
             table.remove(activeNotifications, table.find(activeNotifications, notifData))
             updateNotificationPositions()
         end
-    end)
+    end))
 end
 
-Players.PlayerRemoving:Connect(function(leavingPlayer)
+wrapConnection(Players.PlayerRemoving, function(leavingPlayer)
     pcall(function()
         showNotification(leavingPlayer)
     end)
 end)
 
-NotificationToggle.MouseButton1Click:Connect(function()
+addConnection(NotificationToggle.MouseButton1Click:Connect(function()
     notificationsEnabled = not notificationsEnabled
     NotificationToggle.Text = "Notifications: " .. (notificationsEnabled and "ON" or "OFF")
-end)
+end))
