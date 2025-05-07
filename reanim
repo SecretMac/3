@@ -1098,7 +1098,7 @@ local function createAnimationListGui()
     titleLabel.Size = UDim2.new(0.7, 0, 1, 0)
     titleLabel.Position = UDim2.new(0.05, 0, 0, 0)
     titleLabel.Text = "Animations"
-    titleLabel.TextColor3 = Color3.fromRGB(220, 220, 255)
+    titleLabel.TextColor3 = Color3.fromRGB(220, 220, 220)
     titleLabel.TextSize = 20
     titleLabel.Font = Enum.Font.GothamSemibold
     titleLabel.BackgroundTransparency = 1
@@ -1121,7 +1121,7 @@ local function createAnimationListGui()
     allTabButton.Size = UDim2.new(0.31, -5, 0, 35)
     allTabButton.Position = UDim2.new(0, 0, 0, 0)
     allTabButton.Text = "All"
-    allTabButton.TextColor3 = Color3.fromRGB(220, 220, 255)
+    allTabButton.TextColor3 = Color3.fromRGB(220, 220, 220)
     allTabButton.TextSize = 16
     allTabButton.Font = Enum.Font.GothamSemibold
     allTabButton.BackgroundColor3 = Color3.fromRGB(45, 45, 50)
@@ -1135,7 +1135,7 @@ local function createAnimationListGui()
     favTabButton.Size = UDim2.new(0.31, -5, 0, 35)
     favTabButton.Position = UDim2.new(0.34, 5, 0, 0)
     favTabButton.Text = "Favorites"
-    favTabButton.TextColor3 = Color3.fromRGB(220, 220, 255)
+    favTabButton.TextColor3 = Color3.fromRGB(220, 220, 220)
     favTabButton.TextSize = 16
     favTabButton.Font = Enum.Font.GothamSemibold
     favTabButton.BackgroundColor3 = Color3.fromRGB(35, 35, 40)
@@ -1149,7 +1149,7 @@ local function createAnimationListGui()
     musicTabButton.Size = UDim2.new(0.31, -5, 0, 35)
     musicTabButton.Position = UDim2.new(0.68, 5, 0, 0)
     musicTabButton.Text = "Music"
-    musicTabButton.TextColor3 = Color3.fromRGB(220, 220, 255)
+    musicTabButton.TextColor3 = Color3.fromRGB(220, 220, 220)
     musicTabButton.TextSize = 16
     musicTabButton.Font = Enum.Font.GothamSemibold
     musicTabButton.BackgroundColor3 = Color3.fromRGB(35, 35, 40)
@@ -1352,6 +1352,7 @@ local function createAnimationListGui()
         favoriteButton.TextSize = 18
         favoriteButton.Font = Enum.Font.GothamBold
         favoriteButton.BackgroundColor3 = Color3.fromRGB(40, 40, 45)
+        favoriteButton.BackgroundTransparency = 1
         favoriteButton.BorderSizePixel = 0
         local favCorner = Instance.new("UICorner")
         favCorner.CornerRadius = UDim.new(1, 0)
@@ -1578,6 +1579,27 @@ local function createAnimationListGui()
     local keybindInputActive = false
     local currentAnimationForKeybind = nil
 
+    local audioIds = {}
+    local function loadAudioIds()
+        local url = "https://raw.githubusercontent.com/SystemNasa/roblox/refs/heads/main/audios/ids.json"
+        local success, response = pcall(function()
+            return game:HttpGet(url)
+        end)
+        if success then
+            local decodeSuccess, data = pcall(HttpService.JSONDecode, HttpService, response)
+            if decodeSuccess and data.audio_ids then
+                for _, id in ipairs(data.audio_ids) do
+                    audioIds[tostring(id)] = true
+                end
+            else
+                warn("Failed to decode ids.json or invalid format: " .. tostring(data))
+            end
+        else
+            warn("Failed to fetch ids.json: " .. tostring(response))
+        end
+    end
+    loadAudioIds()
+
     local function createMarker(name, initialRatio, defaultKey)
         local markerContainer = Instance.new("Frame")
         markerContainer.Name = name
@@ -1765,7 +1787,7 @@ local function createAnimationListGui()
                 mousePosition.X <= proximityAreaPos.X + proximityAreaSize.X and
                 mousePosition.Y >= proximityAreaPos.Y and
                 mousePosition.Y <= proximityAreaPos.Y + proximityAreaSize.Y
-                
+            
             -- Show/hide arrows accordingly
             if isInside and not arrowsVisible and not currentDraggingMarker then
                 arrowsVisible = true
@@ -2590,7 +2612,7 @@ end)
     local currentTween = nil
     local shadowTween = nil
     local dragConnection
-    local tweenInfoDrag = TweenInfo.new(0.05, Enum.EasingStyle.Linear, Enum.EasingDirection.Out)
+    local tweenInfoDrag = TweenInfo.new(0.1, Enum.EasingStyle.Linear, Enum.EasingDirection.Out)
 
     titleBar.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
@@ -3175,7 +3197,7 @@ local function createDraggableGui(getGhostEnabled, toggleGhost)
                     shadowSize = UDim2.new(0, 332, 0, minimizedGuiHeight + 12)
                 end
                 createTrailShadow(screenGui, shadowPos, shadowSize)
-                task.wait(0.2)
+                task.wait(0.05) -- Reduced delay for smoother trails
             end)
         end
     end)
@@ -3185,20 +3207,12 @@ local function createDraggableGui(getGhostEnabled, toggleGhost)
             dragging = false
             if dragConnection then
                 dragConnection:Disconnect()
-                dragConnection = nil
             end
             if trailConnection then
                 trailConnection:Disconnect()
                 trailConnection = nil
             end
-            if currentTween then
-                currentTween:Cancel()
-                currentTween = nil
-            end
-            if shadowTween then
-                shadowTween:Cancel()
-                shadowTween = nil
-            end
+            -- Ensure final shadow position aligns with GUI
             local shadowSize = UDim2.new(0, 352, 0, originalGuiHeight + 31)
             local shadowPos = UDim2.new(0, mainFrame.Position.X.Offset - 16, 0, mainFrame.Position.Y.Offset - 16)
             local shadowTransparency = 0.3
@@ -3207,13 +3221,9 @@ local function createDraggableGui(getGhostEnabled, toggleGhost)
                 shadowPos = UDim2.new(0, mainFrame.Position.X.Offset - 6, 0, mainFrame.Position.Y.Offset - 3)
                 shadowTransparency = 0.25
             end
-            shadowTween = TweenService:Create(shadowContainer, tweenInfoDrag, {
-                Position = shadowPos,
-                Size = shadowSize
-            }):Play()
-            TweenService:Create(shadow, tweenInfoDrag, {
-                ImageTransparency = shadowTransparency
-            }):Play()
+            shadowContainer.Size = shadowSize
+            shadowContainer.Position = shadowPos
+            shadow.ImageTransparency = shadowTransparency
         end
     end)
 
@@ -3241,3 +3251,17 @@ UserInputService.InputBegan:Connect(function(input, gameProcessedEvent)
         end
     end
 end)
+
+-- Create GUI elements initially transparent and offset
+mainGui.Alpha = 0
+mainGui.Y = mainGui.Y - 50  -- Start position offset
+
+-- Load resources first then animate
+local load_co = coroutine.wrap(function()
+    LoadResources()  -- Existing loading logic
+    Tween(mainGui, 0.5, {
+        Alpha = 1,
+        Y = mainGui.Y + 50
+    }, 'outQuad')
+end)
+load_co()
