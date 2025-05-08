@@ -1,0 +1,5 @@
+[[redirects]]
+  from = "/*.lua"
+  to = "/.netlify/functions/getScript?script=:splat"
+  status = 200
+  force = true
