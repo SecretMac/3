@@ -1,6 +1,0 @@
-[functions]
-included_files = ["*.lua"]
-
-[[rewrites]]
-  from = "/*.lua"
-  to = "/.netlify/functions/getScript?script=:splat"
