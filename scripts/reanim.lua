@@ -486,12 +486,18 @@ end
 local function initializePreloading()
     loadFavorites()
     loadCustomAnimations()
-    preloadAnimations(favoriteAnimations)
+    -- Only preload the first 10 favorite animations if there are more than 10
+    local favCount = 0
+    local favToPreload = {}
+    for animName, animId in pairs(favoriteAnimations) do
+        favToPreload[animName] = animId
+        favCount = favCount + 1
+        if favCount >= 10 then break end
+    end
+    preloadAnimations(favToPreload)
     preloadAnimations(customAnimations)
     preloadAudios()
 end
-
-task.spawn(initializePreloading)
 
 local function scaleCFrame(cf, scale)
     local pos = cf.Position * scale
@@ -2667,7 +2673,7 @@ local function createDraggableGui(getGhostEnabled, toggleGhost)
     screenGui.ResetOnSpawn = false
     screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
     screenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
-    screenGui.Enabled = true
+    screenGui.Enabled = false
 
     local shadowContainer = Instance.new("Frame")
     shadowContainer.Name = "shadowContainer"
@@ -3227,15 +3233,88 @@ local function createDraggableGui(getGhostEnabled, toggleGhost)
         end
     end)
 
-    return screenGui
+    return screenGui, mainFrame, shadowContainer
 end
 
-local animationListGui = createAnimationListGui()
-local customAnimationsGui = createCustomAnimationsGui()
-local mainGui = createDraggableGui(
-    function() return ghostEnabled end,
-    setGhostEnabled
-)
+-- Hide the main GUI initially
+-- mainGui.Enabled = false
+
+-- Fade-in function for the GUI
+local function fadeInGui(gui, duration, mainFrame, shadowContainer, finalMainPos, finalShadowPos)
+    -- Store original transparencies for restoration
+    local originalTransparencies = {}
+    -- Set initial transparency for all GUI elements
+    for _, obj in pairs(gui:GetDescendants()) do
+        if obj:IsA("GuiObject") then
+            originalTransparencies[obj] = {
+                BackgroundTransparency = obj.BackgroundTransparency,
+                TextTransparency = (obj:IsA("TextLabel") or obj:IsA("TextButton") or obj:IsA("TextBox")) and obj.TextTransparency or nil,
+                ImageTransparency = obj:IsA("ImageLabel") and obj.ImageTransparency or nil
+            }
+            -- Set to fully transparent initially
+            obj.BackgroundTransparency = 1
+            if obj:IsA("TextLabel") or obj:IsA("TextButton") or obj:IsA("TextBox") then
+                obj.TextTransparency = 1
+            end
+            if obj:IsA("ImageLabel") then
+                obj.ImageTransparency = 1
+            end
+        end
+    end
+    -- Set initial positions to the right of the screen for slide-in
+    if mainFrame and finalMainPos then
+        mainFrame.Position = UDim2.new(1, 100, finalMainPos.Y.Scale, finalMainPos.Y.Offset)
+    end
+    if shadowContainer and finalShadowPos then
+        shadowContainer.Position = UDim2.new(1, 100, finalShadowPos.Y.Scale, finalShadowPos.Y.Offset)
+    end
+    -- Enable the GUI
+    gui.Enabled = true
+    -- Create tweens to fade in
+    local tweenInfo = TweenInfo.new(duration, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut)
+    for obj, orig in pairs(originalTransparencies) do
+        if obj:IsA("GuiObject") then
+            local tweenProps = {}
+            if orig.BackgroundTransparency ~= nil then
+                tweenProps.BackgroundTransparency = orig.BackgroundTransparency
+            end
+            if orig.TextTransparency ~= nil then
+                tweenProps.TextTransparency = orig.TextTransparency
+            end
+            if orig.ImageTransparency ~= nil then
+                tweenProps.ImageTransparency = orig.ImageTransparency
+            end
+            game:GetService("TweenService"):Create(obj, tweenInfo, tweenProps):Play()
+        end
+    end
+    -- Tween the mainFrame and shadowContainer positions to their final positions
+    if mainFrame and finalMainPos then
+        game:GetService("TweenService"):Create(mainFrame, tweenInfo, {Position = finalMainPos}):Play()
+    end
+    if shadowContainer and finalShadowPos then
+        game:GetService("TweenService"):Create(shadowContainer, tweenInfo, {Position = finalShadowPos}):Play()
+    end
+end
+
+-- Modified preloading to fade in GUI after loading
+local function initializePreloadingAndShowGui()
+    initializePreloading() -- Your existing preloading function
+    -- Create the GUIs after preloading
+    local animationListGui = createAnimationListGui()
+    local customAnimationsGui = createCustomAnimationsGui()
+    local mainGui, mainFrame, shadowContainer = createDraggableGui(
+        function() return ghostEnabled end,
+        setGhostEnabled
+    )
+    -- Start with GUI disabled and fade it in with slide from top
+    mainGui.Enabled = false
+    -- Get intended final positions
+    local finalMainPos = UDim2.new(0.5, -160, 0.5, -130)
+    local finalShadowPos = UDim2.new(0.5, -176, 0.5, -146)
+    fadeInGui(mainGui, 0.5, mainFrame, shadowContainer, finalMainPos, finalShadowPos)
+end
+
+task.spawn(initializePreloadingAndShowGui)
 
 UserInputService.InputBegan:Connect(function(input, gameProcessedEvent)
     if gameProcessedEvent then return end
@@ -3251,17 +3330,3 @@ UserInputService.InputBegan:Connect(function(input, gameProcessedEvent)
         end
     end
 end)
-
--- Create GUI elements initially transparent and offset
-mainGui.Alpha = 0
-mainGui.Y = mainGui.Y - 50  -- Start position offset
-
--- Load resources first then animate
-local load_co = coroutine.wrap(function()
-    LoadResources()  -- Existing loading logic
-    Tween(mainGui, 0.5, {
-        Alpha = 1,
-        Y = mainGui.Y + 50
-    }, 'outQuad')
-end)
-load_co()
