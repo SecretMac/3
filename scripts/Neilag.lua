@@ -1588,3 +1588,4 @@ addConnection(NotificationToggle.MouseButton1Click:Connect(function()
     notificationsEnabled = not notificationsEnabled
     NotificationToggle.Text = "Notifications: " .. (notificationsEnabled and "ON" or "OFF")
 end))
+print("works")
